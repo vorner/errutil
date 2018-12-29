@@ -67,3 +67,47 @@ impl<T, E: StdError + Send + Sync + 'static> ResultExt for Result<T, E> {
         self.map_err(|e| e.context(f()))
     }
 }
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+struct MsgErr<D>(D);
+
+impl<D: Display> Display for MsgErr<D> {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        self.0.fmt(fmt)
+    }
+}
+
+impl<D: Debug + Display> StdError for MsgErr<D> {}
+
+pub fn err_msg<D: Debug + Display>(msg: D) -> impl StdError {
+    MsgErr(msg)
+}
+
+#[macro_export]
+macro_rules! bail {
+    ($e:expr) => {
+        return Err($crate::err_msg($e).into());
+    };
+    ($fmt:expr, $($arg:tt)+) => {
+        return Err($crate::err_msg(format!($fmt, $($arg)+)).into());
+    };
+}
+
+#[macro_export(local_inner_macros)]
+macro_rules! ensure {
+    ($cond:expr, $e:expr) => {
+        if !($cond) {
+            bail!($e);
+        }
+    };
+    ($cond:expr, $fmt:expr, $($arg:tt)+) => {
+        if !($cond) {
+            bail!($fmt, $($arg)+);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! format_err {
+    ($($arg:tt)*) => { $crate::err_msg(format!($arg)) }
+}
