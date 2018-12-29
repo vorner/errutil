@@ -1,5 +1,6 @@
 use std::error::Error as StdError;
 use std::fmt::{Debug, Display, Formatter, Result as FmtResult};
+use std::sync::Mutex;
 
 pub type Error = Box<dyn StdError + Send + Sync>;
 
@@ -34,6 +35,9 @@ pub trait ErrorExt {
     fn context<M: Display + Debug>(self, msg: M) -> Context<M, Self>
     where
         Self: Sized;
+    fn sync_err(self) -> SyncError<Self>
+    where
+        Self: Sized;
 
     // TODO: Convenience functions like iter_causes?
 }
@@ -45,6 +49,12 @@ impl<E: StdError> ErrorExt for E {
     {
         Context::new(msg, self)
     }
+    fn sync_err(self) -> SyncError<Self>
+    where
+        Self: Sized
+    {
+        SyncError::from(self)
+    }
 }
 
 pub trait ResultExt: Sized {
@@ -53,6 +63,7 @@ pub trait ResultExt: Sized {
     fn context<M: Display + Debug>(self, msg: M) -> Result<Self::Ok, Context<M, Self::Err>>;
     fn with_context<M: Display + Debug, F: FnOnce() -> M>(self, f: F)
         -> Result<Self::Ok, Context<M, Self::Err>>;
+    fn sync_err(self) -> Result<Self::Ok, SyncError<Self::Err>>;
 }
 
 impl<T, E: StdError + Send + Sync + 'static> ResultExt for Result<T, E> {
@@ -66,7 +77,27 @@ impl<T, E: StdError + Send + Sync + 'static> ResultExt for Result<T, E> {
     {
         self.map_err(|e| e.context(f()))
     }
+    fn sync_err(self) -> Result<Self::Ok, SyncError<Self::Err>> {
+        self.map_err(|e| e.sync_err())
+    }
 }
+
+#[derive(Debug)]
+pub struct SyncError<E>(Mutex<E>);
+
+impl<E> From<E> for SyncError<E> {
+    fn from(err: E) -> Self {
+        SyncError(Mutex::new(err))
+    }
+}
+
+impl<E: Display> Display for SyncError<E> {
+    fn fmt(&self, fmt: &mut Formatter) -> FmtResult {
+        self.0.lock().unwrap().fmt(fmt)
+    }
+}
+
+impl<E: StdError> StdError for SyncError<E> { }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 struct MsgErr<D>(D);
