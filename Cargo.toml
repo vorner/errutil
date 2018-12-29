@@ -5,5 +5,3 @@ authors = ["Michal 'vorner' Vaner <vorner@vorner.cz>"]
 edition = "2018"
 
 [dependencies]
-backtrace = "~0.3"
-err-derive = "~0.1"
